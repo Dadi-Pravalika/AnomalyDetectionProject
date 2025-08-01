@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Anomaly Detection</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f8f9fa;
+      padding: 20px;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+    }
+    .center {
+      text-align: center;
+      margin-top: 20px;
+    }
+    #status {
+      font-size: 24px;
+      margin: 10px;
+      padding: 10px;
+      border-radius: 10px;
+      display: inline-block;
+    }
+    #status.normal {
+      color: green;
+      background-color: #d4edda;
+    }
+    #status.anomaly {
+      color: red;
+      background-color: #f8d7da;
+    }
+    table {
+      margin: 20px auto;
+      border-collapse: collapse;
+      width: 80%;
+    }
+    th, td {
+      border: 1px solid #aaa;
+      padding: 8px;
+      text-align: center;
+    }
+    th {
+      background-color: #ddd;
+    }
+    .toggle-container {
+      margin-top: 20px;
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🌐 Real-Time Anomaly Detection</h1>
+
+  <div class="center">
+    <button id="predictBtn">🔍 Predict</button>
+    <button onclick="downloadCSV()">⬇️ Download CSV</button>
+    <span id="status" class="">Click Predict</span>
+  </div>
+
+  <div class="toggle-container">
+    <label>
+      <input type="checkbox" id="autoToggle" />
+      ⏱️ Auto Predict (5s)
+    </label>
+    <label>
+      <input type="checkbox" id="darkToggle" />
+      🌙 Dark Mode
+    </label>
+  </div>
+
+  <canvas id="anomalyChart" width="600" height="300" style="margin-top: 40px;"></canvas>
+
+  <table id="logTable">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Timestamp</th>
+        <th>Status</th>
+        <th>Error</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    const ctx = document.getElementById('anomalyChart').getContext('2d');
+    const anomalyChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Prediction Error',
+          data: [],
+          borderColor: 'orange',
+          fill: false,
+          tension: 0.3
+        }]
+      },
+      options: {
+        scales: {
+          y: {
+            beginAtZero: true
+          }
+        }
+      }
+    });
+
+    let predictionCount = 0;
+    const statusBox = document.getElementById("status");
+    const logTable = document.getElementById("logTable").querySelector("tbody");
+
+    document.getElementById("predictBtn").addEventListener("click", () => {
+      fetch("/predict")
+        .then(res => res.json())
+        .then(data => {
+          const now = new Date().toLocaleTimeString();
+          predictionCount++;
+          anomalyChart.data.labels.push(now);
+          anomalyChart.data.datasets[0].data.push(data.error);
+          anomalyChart.update();
+
+          // Update Status
+          statusBox.textContent = `${data.status} (Error: ${data.error.toFixed(4)})`;
+          statusBox.className = data.status.toLowerCase();
+
+          // Update Table
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${predictionCount}</td>
+            <td>${now}</td>
+            <td>${data.status}</td>
+            <td>${data.error.toFixed(4)}</td>`;
+          logTable.appendChild(row);
+        });
+    });
+
+    // Auto Predict toggle
+    let autoInterval = null;
+    document.getElementById("autoToggle").addEventListener("change", (e) => {
+      if (e.target.checked) {
+        autoInterval = setInterval(() => {
+          document.getElementById("predictBtn").click();
+        }, 5000);
+      } else {
+        clearInterval(autoInterval);
+      }
+    });
+
+    // Dark Mode toggle
+    document.getElementById("darkToggle").addEventListener("change", (e) => {
+      const dark = e.target.checked;
+      document.body.style.backgroundColor = dark ? "#1e1e1e" : "#f8f9fa";
+      document.body.style.color = dark ? "#ffffff" : "#333";
+      anomalyChart.options.plugins.legend.labels.color = dark ? "#fff" : "#000";
+      anomalyChart.options.scales.x.ticks.color = dark ? "#fff" : "#000";
+      anomalyChart.options.scales.y.ticks.color = dark ? "#fff" : "#000";
+      anomalyChart.update();
+    });
+
+    // Download CSV
+    function downloadCSV() {
+      let csv = "Index,Timestamp,Status,Error\n";
+      const rows = logTable.querySelectorAll("tr");
+      rows.forEach(row => {
+        const cells = row.querySelectorAll("td");
+        let rowData = Array.from(cells).map(cell => cell.textContent).join(",");
+        csv += rowData + "\n";
+      });
+
+      const blob = new Blob([csv], { type: "text/csv" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "anomaly_predictions.csv";
+      a.click();
+    }
+  </script>
+</body>
+</html>
